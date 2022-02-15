@@ -28,15 +28,18 @@ namespace sensor = ouster::sensor;
 int main(int argc, char** argv) {
     ros::init(argc, argv, "os_cloud_node");
     ros::NodeHandle nh("~");
+    ros::NodeHandle pnh("");
 
     auto tf_prefix = nh.param("tf_prefix", std::string{});
     if (!tf_prefix.empty() && tf_prefix.back() != '/') tf_prefix.append("/");
     auto sensor_frame = tf_prefix + "os_sensor";
     auto imu_frame = tf_prefix + "os_imu";
     auto lidar_frame = tf_prefix + "os_lidar";
+    auto packet_stride = nh.param<int>("packet_stride", 1);
 
     ouster_ros::OSConfigSrv cfg{};
     auto client = nh.serviceClient<ouster_ros::OSConfigSrv>("os_config");
+//    auto client = pnh.serviceClient<ouster_ros::OSConfigSrv>("/os_node/os_config");
     client.waitForExistence();
     if (!client.call(cfg)) {
         ROS_ERROR("Calling config service failed");
@@ -75,18 +78,19 @@ int main(int argc, char** argv) {
 
     ouster::ScanBatcher batch(W, pf);
 
+    int64_t num_packet = 0;
     auto lidar_handler = [&](const PacketMsg& pm) mutable {
-        if (batch(pm.buf.data(), ls)) {
-            auto h = std::find_if(
-                ls.headers.begin(), ls.headers.end(), [](const auto& h) {
-                    return h.timestamp != std::chrono::nanoseconds{0};
-                });
-            if (h != ls.headers.end()) {
-                for (int i = 0; i < n_returns; i++) {
-                    scan_to_cloud(xyz_lut, h->timestamp, ls, cloud, i);
-                    lidar_pubs[i].publish(ouster_ros::cloud_to_cloud_msg(
+        batch(pm.buf.data(), ls);
+        num_packet++;
+        if (num_packet % packet_stride == 0) {
+            auto h = std::min_element(
+                    ls.headers.begin(), ls.headers.end(), [](const auto &h1, const auto &h2) {
+                        return h1.timestamp < h2.timestamp;
+                    });
+            for (int i = 0; i < n_returns; i++) {
+                scan_to_cloud(xyz_lut, h->timestamp, ls, cloud, i);
+                lidar_pubs[i].publish(ouster_ros::cloud_to_cloud_msg(
                         cloud, h->timestamp, sensor_frame));
-                }
             }
         }
     };
@@ -99,6 +103,10 @@ int main(int argc, char** argv) {
         "lidar_packets", 2048, lidar_handler);
     auto imu_packet_sub = nh.subscribe<PacketMsg, const PacketMsg&>(
         "imu_packets", 100, imu_handler);
+//    auto lidar_packet_sub = pnh.subscribe<PacketMsg, const PacketMsg&>(
+//            "/os_node/lidar_packets", 2048, lidar_handler);
+//    auto imu_packet_sub = pnh.subscribe<PacketMsg, const PacketMsg&>(
+//            "/os_node/imu_packets", 100, imu_handler);
 
     // publish transforms
     tf2_ros::StaticTransformBroadcaster tf_bcast{};
