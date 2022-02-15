@@ -1,5 +1,31 @@
 ===================
-Ouster Example Code
+About this fork
+===================
+
+This fork enables a frequent publishing Ouster point cloud message through direct lidar packet update. Compared to the given Ouster frequency configuration (10Hz or 20Hz), this package can produce lidar scans up to 640Hz by adjusting ``packet_stride`` argument in launch file.
+
+Example (using packet_stride:=4)
+=======
+
+Executing ``ouster_ros`` nodes like::
+
+   roslaunch ouster_ros ouster.launch sensor_hostname:=os-990123456789.local metadata:=/home/user/somewhere/meta.json \ 
+      packet_stride:=4
+
+You can see the frequently publishing lidar scan topics via rviz, as below.
+
+.. image:: assets/viz/rviz_stride4.gif
+   :width: 600
+   :align: center
+   
+Frequency (using ``rostopic hz``):
+   
+.. image:: assets/ros_hz/frequency_stride4.png
+   :width: 600
+   :align: center
+
+===================
+Original Ouster Example Code
 ===================
 
 :Description: Sample code provided for working with Ouster sensors
