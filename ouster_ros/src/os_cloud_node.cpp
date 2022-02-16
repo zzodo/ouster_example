@@ -35,7 +35,7 @@ int main(int argc, char** argv) {
     auto sensor_frame = tf_prefix + "os_sensor";
     auto imu_frame = tf_prefix + "os_imu";
     auto lidar_frame = tf_prefix + "os_lidar";
-    auto packet_stride = nh.param<int>("packet_stride", 1);
+    auto packet_stride = nh.param<int>("packet_stride", 16);
 
     ouster_ros::OSConfigSrv cfg{};
     auto client = nh.serviceClient<ouster_ros::OSConfigSrv>("os_config");
@@ -47,15 +47,12 @@ int main(int argc, char** argv) {
     }
 
     auto info = sensor::parse_metadata(cfg.response.metadata);
-    uint32_t H = info.format.pixels_per_column;
-    uint32_t W = info.format.columns_per_frame;
-    auto udp_profile_lidar = info.format.udp_profile_lidar;
 
-    const int n_returns =
-        (udp_profile_lidar == sensor::UDPProfileLidar::PROFILE_LIDAR_LEGACY)
-            ? 1
-            : 2;
+    auto pf_old = sensor::get_format(info);
+    const int divisor = info.format.columns_per_frame / (pf_old.columns_per_packet * packet_stride);
+    info.format.columns_per_frame = info.format.columns_per_frame / divisor;
     auto pf = sensor::get_format(info);
+    auto udp_profile_lidar = info.format.udp_profile_lidar;
 
     auto imu_pub = nh.advertise<sensor_msgs::Imu>("imu", 100);
 
@@ -65,33 +62,50 @@ int main(int argc, char** argv) {
     };
 
     auto lidar_pubs = std::vector<ros::Publisher>();
-    for (int i = 0; i < n_returns; i++) {
+    for (int i = 0; i < divisor; i++) {
         auto pub = nh.advertise<sensor_msgs::PointCloud2>(
-            std::string("points") + img_suffix(i), 10);
+                std::string("points") + img_suffix(i), 10);
         lidar_pubs.push_back(pub);
     }
 
-    auto xyz_lut = ouster::make_xyz_lut(info);
+    uint32_t H = info.format.pixels_per_column;
+    uint32_t W = info.format.columns_per_frame;
+
+    Eigen::Matrix<double, 4, 4, 2> rot_division = Eigen::Matrix<double, 4, 4, 2>::Identity();
+    double rot_angle_radians = 2 * M_PI / divisor;
+    rot_division (0, 0) = std::cos(rot_angle_radians);
+    rot_division (0, 1) = -std::sin(rot_angle_radians);
+    rot_division (1, 0) = std::sin(rot_angle_radians);
+    rot_division (1, 1) = std::cos(rot_angle_radians);
+
+    auto xyz_luts = std::vector<ouster::XYZLut>();
+    for (int i = 0; i < divisor; i++) {
+        Eigen::Matrix<double, 4, 4, 2> transformation = info.lidar_to_sensor_transform;
+        for (int j = 0; j < i; j++)
+            transformation = transformation * rot_division;
+        auto xyz_lut = ouster::make_xyz_lut(W, H,
+                                            sensor::range_unit, info.lidar_origin_to_beam_origin_mm,
+                                            transformation, info.beam_azimuth_angles,
+                                            info.beam_altitude_angles, divisor);
+        xyz_luts.push_back(xyz_lut);
+    }
 
     ouster::LidarScan ls{W, H, udp_profile_lidar};
     Cloud cloud{W, H};
 
+    size_t division_id = 0;
     ouster::ScanBatcher batch(W, pf);
 
-    int64_t num_packet = 0;
     auto lidar_handler = [&](const PacketMsg& pm) mutable {
-        batch(pm.buf.data(), ls);
-        num_packet++;
-        if (num_packet % packet_stride == 0) {
+        if (batch(pm.buf.data(), ls)) {
             auto h = std::min_element(
                     ls.headers.begin(), ls.headers.end(), [](const auto &h1, const auto &h2) {
                         return h1.timestamp < h2.timestamp;
                     });
-            for (int i = 0; i < n_returns; i++) {
-                scan_to_cloud(xyz_lut, h->timestamp, ls, cloud, i);
-                lidar_pubs[i].publish(ouster_ros::cloud_to_cloud_msg(
-                        cloud, h->timestamp, sensor_frame));
-            }
+            scan_to_cloud(xyz_luts[division_id % divisor], h->timestamp, ls, cloud, 0);
+            lidar_pubs[division_id % divisor].publish(ouster_ros::cloud_to_cloud_msg(
+                    cloud, h->timestamp, sensor_frame));
+            division_id++;
         }
     };
 

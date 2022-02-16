@@ -182,7 +182,8 @@ XYZLut make_xyz_lut(size_t w, size_t h, double range_unit,
                     double lidar_origin_to_beam_origin_mm,
                     const mat4d& transform,
                     const std::vector<double>& azimuth_angles_deg,
-                    const std::vector<double>& altitude_angles_deg) {
+                    const std::vector<double>& altitude_angles_deg,
+                    const int divisor) {
     if (w <= 0 || h <= 0)
         throw std::invalid_argument("lut dimensions must be greater than zero");
     if (azimuth_angles_deg.size() != h || altitude_angles_deg.size() != h)
@@ -192,7 +193,7 @@ XYZLut make_xyz_lut(size_t w, size_t h, double range_unit,
     Eigen::ArrayXd azimuth(w * h);   // theta_a
     Eigen::ArrayXd altitude(w * h);  // phi
 
-    const double azimuth_radians = M_PI * 2.0 / w;
+    const double azimuth_radians = M_PI * 2.0 / w / divisor;
 
     // populate angles for each pixel
     for (size_t v = 0; v < w; v++) {
@@ -309,6 +310,8 @@ bool ScanBatcher::operator()(const uint8_t* packet_buf, LidarScan& ls) {
     }
 
     const uint16_t f_id = pf.frame_id(packet_buf);
+    const uint8_t* first_column = pf.nth_col(0, packet_buf);
+    const uint16_t first_m_id = pf.col_measurement_id(first_column);
 
     if (ls.frame_id == -1) {
         // expecting to start batching a new scan
@@ -317,7 +320,7 @@ bool ScanBatcher::operator()(const uint8_t* packet_buf, LidarScan& ls) {
     } else if (ls.frame_id == f_id + 1) {
         // drop reordered packets from the previous frame
         return false;
-    } else if (ls.frame_id != f_id) {
+    } else if (ls.frame_id != f_id || first_m_id % w == 0) {
         // got a packet from a new frame
         impl::foreach_field(ls, zero_field_cols(), next_m_id, w);
         zero_header_cols(ls, next_m_id, w);
@@ -329,14 +332,14 @@ bool ScanBatcher::operator()(const uint8_t* packet_buf, LidarScan& ls) {
     // parse measurement blocks
     for (int icol = 0; icol < pf.columns_per_packet; icol++) {
         const uint8_t* col_buf = pf.nth_col(icol, packet_buf);
-        const uint16_t m_id = pf.col_measurement_id(col_buf);
+        const uint16_t m_id = pf.col_measurement_id(col_buf) % w;
         const std::chrono::nanoseconds ts(pf.col_timestamp(col_buf));
         const uint32_t encoder = pf.col_encoder(col_buf);
         const uint32_t status = pf.col_status(col_buf);
         const bool valid = (status & 0x01);
 
         // drop invalid / out-of-bounds data in case of misconfiguration
-        if (!valid || m_id >= w) continue;
+        if (!valid) continue;
 
         // zero out missing columns if we jumped forward
         if (m_id >= next_m_id) {
