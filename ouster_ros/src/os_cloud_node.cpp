@@ -81,7 +81,7 @@ int main(int argc, char** argv) {
     auto xyz_luts = std::vector<ouster::XYZLut>();
     for (int i = 0; i < divisor; i++) {
         Eigen::Matrix<double, 4, 4, 2> transformation = info.lidar_to_sensor_transform;
-        for (int j = 0; j <= i; j++)
+        for (int j = 0; j < i; j++)
             transformation = transformation * rot_division;
         auto xyz_lut = ouster::make_xyz_lut(W, H,
                                             sensor::range_unit, info.lidar_origin_to_beam_origin_mm,
@@ -93,19 +93,26 @@ int main(int argc, char** argv) {
     ouster::LidarScan ls{W, H, udp_profile_lidar};
     Cloud cloud{W, H};
 
-    size_t division_id = 0;
     ouster::ScanBatcher batch(W, pf);
 
+    size_t division_id = 0;
+    int32_t frame_id_last = 0;
     auto lidar_handler = [&](const PacketMsg& pm) mutable {
         if (batch(pm.buf.data(), ls)) {
-            auto h = std::min_element(
+            auto h_t = std::min_element(
                     ls.headers.begin(), ls.headers.end(), [](const auto &h1, const auto &h2) {
                         return h1.timestamp < h2.timestamp;
                     });
-            scan_to_cloud(xyz_luts[division_id % divisor], h->timestamp, ls, cloud, 0);
+            
+            if (frame_id_last == 0 || frame_id_last == ls.frame_id) {
+                frame_id_last = ls.frame_id;
+                return;
+            }
+
+            scan_to_cloud(xyz_luts[division_id % divisor], h_t->timestamp, ls, cloud, 0);
 
             lidar_pubs[division_id % divisor].publish(ouster_ros::cloud_to_cloud_msg(
-                    cloud, h->timestamp, sensor_frame));
+                    cloud, h_t->timestamp, sensor_frame));
             division_id++;
         }
     };
