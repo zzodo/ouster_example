@@ -72,7 +72,7 @@ int main(int argc, char** argv) {
     uint32_t W = info.format.columns_per_frame;
 
     Eigen::Matrix<double, 4, 4, 2> rot_division = Eigen::Matrix<double, 4, 4, 2>::Identity();
-    double rot_angle_radians = 2 * M_PI / divisor;
+    double rot_angle_radians = -2 * M_PI / divisor;
     rot_division (0, 0) = std::cos(rot_angle_radians);
     rot_division (0, 1) = -std::sin(rot_angle_radians);
     rot_division (1, 0) = std::sin(rot_angle_radians);
@@ -81,7 +81,7 @@ int main(int argc, char** argv) {
     auto xyz_luts = std::vector<ouster::XYZLut>();
     for (int i = 0; i < divisor; i++) {
         Eigen::Matrix<double, 4, 4, 2> transformation = info.lidar_to_sensor_transform;
-        for (int j = 0; j < i; j++)
+        for (int j = 0; j <= i; j++)
             transformation = transformation * rot_division;
         auto xyz_lut = ouster::make_xyz_lut(W, H,
                                             sensor::range_unit, info.lidar_origin_to_beam_origin_mm,
@@ -103,6 +103,7 @@ int main(int argc, char** argv) {
                         return h1.timestamp < h2.timestamp;
                     });
             scan_to_cloud(xyz_luts[division_id % divisor], h->timestamp, ls, cloud, 0);
+
             lidar_pubs[division_id % divisor].publish(ouster_ros::cloud_to_cloud_msg(
                     cloud, h->timestamp, sensor_frame));
             division_id++;

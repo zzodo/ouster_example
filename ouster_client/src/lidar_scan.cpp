@@ -320,7 +320,7 @@ bool ScanBatcher::operator()(const uint8_t* packet_buf, LidarScan& ls) {
     } else if (ls.frame_id == f_id + 1) {
         // drop reordered packets from the previous frame
         return false;
-    } else if (ls.frame_id != f_id || first_m_id % w == 0) {
+    } else if (first_m_id % w == 0) {
         // got a packet from a new frame
         impl::foreach_field(ls, zero_field_cols(), next_m_id, w);
         zero_header_cols(ls, next_m_id, w);
@@ -332,7 +332,7 @@ bool ScanBatcher::operator()(const uint8_t* packet_buf, LidarScan& ls) {
     // parse measurement blocks
     for (int icol = 0; icol < pf.columns_per_packet; icol++) {
         const uint8_t* col_buf = pf.nth_col(icol, packet_buf);
-        const uint16_t m_id = pf.col_measurement_id(col_buf) % w;
+        const uint16_t m_id = pf.col_measurement_id(col_buf);
         const std::chrono::nanoseconds ts(pf.col_timestamp(col_buf));
         const uint32_t encoder = pf.col_encoder(col_buf);
         const uint32_t status = pf.col_status(col_buf);
@@ -343,20 +343,20 @@ bool ScanBatcher::operator()(const uint8_t* packet_buf, LidarScan& ls) {
 
         // zero out missing columns if we jumped forward
         if (m_id >= next_m_id) {
-            impl::foreach_field(ls, zero_field_cols(), next_m_id, m_id);
-            zero_header_cols(ls, next_m_id, m_id);
+            impl::foreach_field(ls, zero_field_cols(), next_m_id % w, m_id % w);
+            zero_header_cols(ls, next_m_id % w, m_id % w);
             next_m_id = m_id + 1;
         }
 
         // old header API; will be removed in a future release
-        ls.header(m_id) = {ts, encoder, status};
+        ls.header(m_id % w) = {ts, encoder, status};
 
         // write new header values
-        ls.timestamp()[m_id] = ts.count();
-        ls.measurement_id()[m_id] = m_id;
-        ls.status()[m_id] = status;
+        ls.timestamp()[m_id % w] = ts.count();
+        ls.measurement_id()[m_id % w] = m_id;
+        ls.status()[m_id % w] = status;
 
-        impl::foreach_field(ls, parse_field_col(), m_id, pf, col_buf);
+        impl::foreach_field(ls, parse_field_col(), m_id % w, pf, col_buf);
     }
     return false;
 }
