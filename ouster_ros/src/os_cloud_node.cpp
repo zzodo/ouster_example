@@ -57,7 +57,6 @@ int main(int argc, char** argv) {
     auto imu_pub = nh.advertise<sensor_msgs::Imu>("imu", 100);
 
     auto img_suffix = [](int ind) {
-        if (ind == 0) return std::string();
         return std::to_string(ind + 1);  // need second return to return 2
     };
 
@@ -103,7 +102,7 @@ int main(int argc, char** argv) {
                     ls.headers.begin(), ls.headers.end(), [](const auto &h1, const auto &h2) {
                         return h1.timestamp < h2.timestamp;
                     });
-            
+
             if (frame_id_last == 0 || frame_id_last == ls.frame_id) {
                 frame_id_last = ls.frame_id;
                 return;
