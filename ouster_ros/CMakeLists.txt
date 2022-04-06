@@ -82,6 +82,10 @@ add_executable(os_cloud_node src/os_cloud_node.cpp)
 target_link_libraries(os_cloud_node ouster_ros ${catkin_LIBRARIES})
 add_dependencies(os_cloud_node ${PROJECT_NAME}_gencpp)
 
+add_executable(os_cloud_node_continuous src/os_cloud_node_continuous.cpp)
+target_link_libraries(os_cloud_node_continuous ouster_ros ${catkin_LIBRARIES})
+add_dependencies(os_cloud_node_continuous ${PROJECT_NAME}_gencpp)
+
 add_executable(img_node src/img_node.cpp)
 target_link_libraries(img_node ouster_ros ${catkin_LIBRARIES})
 add_dependencies(img_node ${PROJECT_NAME}_gencpp)

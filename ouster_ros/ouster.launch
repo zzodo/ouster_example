@@ -34,6 +34,14 @@
     <param name="~/packet_stride" value="$(arg packet_stride)"/>
   </node>
 
+  <node pkg="ouster_ros" type="os_cloud_node_continuous" name="os_cloud_node_continuous" output="screen" required="true">
+    <remap from="~/os_config" to="/os_node/os_config"/>
+    <remap from="~/lidar_packets" to="/os_node/lidar_packets"/>
+    <remap from="~/imu_packets" to="/os_node/imu_packets"/>
+    <param name="~/tf_prefix" value="$(arg tf_prefix)"/>
+    <param name="~/packet_stride" value="$(arg packet_stride)"/>
+  </node>
+
   <node if="$(arg viz)" pkg="rviz" name="rviz" type="rviz" args="$(arg rviz_config)" output="screen" required="true" />
   <node if="$(arg viz)" pkg="ouster_ros" name="img_node" type="img_node" output="screen" required="true">
     <remap from="~/os_config" to="/os_node/os_config"/>
