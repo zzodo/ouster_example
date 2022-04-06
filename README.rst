@@ -1,31 +1,48 @@
-===================
+==============================================
+Continuously Updating Ouster Cloud Node for ROS
+==============================================
+
+
 About this fork
 ===================
 
-This fork enables a frequent publishing Ouster point cloud message through direct lidar packet update. Compared to the given Ouster frequency configuration (10Hz or 20Hz), this package can produce lidar scans up to 640Hz by adjusting ``packet_stride`` argument in launch file.
+This fork enables a frequent publishing Ouster point cloud message through direct lidar packet update. 
+Compared to the given Ouster frequency configuration (10Hz or 20Hz), this package can produce lidar scans up to 640Hz by adjusting ``packet_stride`` argument in launch file.
 
-Example (using packet_stride:=4)
+Example (using packet_stride:=1)
 =======
 
 Executing ``ouster_ros`` nodes like::
 
    roslaunch ouster_ros ouster.launch sensor_hostname:=os-990123456789.local metadata:=/home/user/somewhere/meta.json \ 
-      packet_stride:=4
+      packet_stride:=1
 
-You can see the frequently publishing lidar scan topics via rviz, as below.
+You can see the frequently publishing lidar scan topics via rviz, as below. (little tweaked for visualization)
 
-.. image:: assets/viz/rviz_stride4.gif
+.. image:: assets/example_viz.gif
    :width: 600
    :align: center
    
 Frequency (using ``rostopic hz``):
    
-.. image:: assets/ros_hz/frequency_stride4.png
+.. image:: assets/frequency_stride1.png
    :width: 600
    :align: center
+  
+Important Note
+===============
+
+This ROS package provides a faster point cloud update by partially updating scanning horizon of 3D mechanical Lidar. 
+The important fact is that other points of the point cloud will remain unchanged, may be an issue in some applications.  
+If you want to register the point cloud, for instance, you should apply any form of changes for the points,  
+because the unchanged points will affect during correspondence search and residual calculation. 
+In that case, compensating each points with updated pose information cloud be an answer.  
+
+
+=======================================================================================================================
 
 ===================
-Original Ouster Example Code
+`Original Ouster Example Code <https://github.com/ouster-lidar/ouster_example>`_
 ===================
 
 :Description: Sample code provided for working with Ouster sensors
